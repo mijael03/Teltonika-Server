@@ -1,11 +1,9 @@
 import socket
 import threading
-import redis
 
 from time import gmtime, strftime
-import cPickle
-
-import ConfigParser
+import pickle
+from configparser import RawConfigParser
 from optparse import OptionParser
 
 from gps import GPSTerminal
@@ -20,11 +18,11 @@ class ClientThread(threading.Thread):
         r_host = self.config.get('redis', 'host')
         r_port = int(self.config.get('redis', 'port'))
         r_db = int(self.config.get('redis', 'db'))
-        self.rcli = redis.Redis(host=r_host, port=r_port, db=r_db)
+        #self.rcli = redis.Redis(host=r_host, port=r_port, db=r_db)
         self.channel = self.config.get('redis', 'channel')
     
     def log(self, msg):
-        print "%s\t%s\t%s"%(self.logTime, self.identifier, msg)
+        print("%s\t%s\t%s"%(self.logTime, self.identifier, msg))
         pass
 
     def run(self):
@@ -37,19 +35,18 @@ class ClientThread(threading.Thread):
                 self.saveData(terminalClient.getSensorData())
                 terminalClient.sendOKClient()
                 self.log('Client %s'%terminalClient.getImei())
-            else:
-                terminalClient.sendFalse()
-                pass
             terminalClient.closeConnection()
         else: 
             self.log('Socket is null.')
 
     def saveData(self, sensorData):
-        self.rcli.rpush(self.channel, cPickle.dumps(sensorData))
+        print("DATA ")
+        print(len(sensorData))
+        #self.rcli.rpush(self.channel, pickle.dumps(sensorData))
 
 def get_config(config_file):
 
-    config = ConfigParser.RawConfigParser()
+    config = RawConfigParser()
     config.add_section('redis')
     config.set('redis', 'channel', 'GPSSensorsData')
     config.set('redis', 'host', 'localhost')
@@ -69,10 +66,10 @@ if __name__ == "__main__":
 
     config = get_config(options.conf_file)
 
-    print "Gps sensors server. %s"%strftime("%d %b %H:%M:%S", gmtime())
-    print "Config: %s" % options.conf_file
-    print "Sensor data db: %s:%s/%s" % (config.get('redis', 'host'), config.get('redis', 'port'), config.get('redis', 'channel'))
-    print "Server started at port %d" % int(config.get('server', 'port'))
+    print("Gps sensors server. %s" % strftime("%d %b %H:%M:%S", gmtime()))
+    print("Config: %s" % options.conf_file)
+    print("Sensor data db: %s:%s/%s" % (config.get('redis', 'host'), config.get('redis', 'port'), config.get('redis', 'channel')))
+    print("Server started at port %d" % int(config.get('server', 'port')))
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

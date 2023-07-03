@@ -4,7 +4,7 @@ import redis
 from datetime import datetime
 from crc import crc16
 import socket
-
+import codecs
 def unpack(fmt, data):
     try:
         return struct.unpack(fmt, data)
@@ -31,7 +31,7 @@ class GPSTerminal:
         self.error = []
         self.blockCount = 0
         # Raw data bytes from tracker
-        self.raw = ''
+        self.raw: bytes = ''
 
         self.success = True
         # Break in data, that was read from socket
@@ -43,16 +43,21 @@ class GPSTerminal:
     def startReadData(self):
         try:
             self.proceedConnection()
-        except socket.timeout, e:
+        except socket.timeout as e:
+            print("SOCKET TIMEOUT")
+            print(e)
             self.success = False
 
     def proceedConnection(self):
 
-        if self.isCorrectConnection():
-            self.readIMEI()
-            if self.imei:
-                self.proceedData()
+        #if self.isCorrectConnection():
+        self.readIMEI()
+        if self.imei:
+            print("IMEI: ")
+            print(self.imei)
+            self.proceedData()
         else:
+            print("INCORRECT CONNECTION")
             self.error.append( "Incorrect connection data stream" )
             self.success = False
 
@@ -63,19 +68,31 @@ class GPSTerminal:
         self.time = datetime.now()
         self.data = self.readData()
         if self.data:
-            Zeros, AVLLength, CodecID, BlockCount, Hexline = unpack("HLBBs*", self.data)
-
+            print("DATA" + str(self.data))
+            Zeros = self.data[0:3]
+            AVLLength = self.data[4:7]
+            CodecID = self.data[8:9]
+            print("ZEROS: ")
+            print(Zeros)
+            print("AVL LENGHT:")
+            print(AVLLength)
+            print(unpack('i',AVLLength))
+            print("CODEC ID")
+            print(CodecID)
+            Zeros, AVLLength, CodecID, BlockCount, Hexline = unpack("sIBBs*", self.data)
+            print( "CodecID" + CodecID)
             self.Hexline = binascii.hexlify(Hexline)
             self.blockCount = BlockCount
+            print( "BlockCount" +BlockCount)
             self.AVL = 0 # AVL ? Looks like data reading cursor
             proceed = 0
             AVLBlockPos = 0
-
             while proceed < BlockCount:
                 try:
                     data = self.proceedBlockData()
+                    print(data)
                     self.sensorsDataBlocks.append( data )
-                except ValueError, e:
+                except ValueError as e:
                     self.dataBreak += 1
                     # In case data consistency problem, we are re-trying to read data from socket
                     self.reReadData(Hexline)
@@ -92,12 +109,21 @@ class GPSTerminal:
                 proceed += 1
                 AVLBlockPos = self.AVL
         else:
-            self.error.append( "No data received" )
-            self.success = False
+             self.error.append( "No data received" )
+             self.success = False
 
-    def readData(self, length = 8192):
+    def readData(self, length = 152):
         data = self.socket.recv(length)
-        self.raw += data
+        print("READ DATA:")
+        print(data)
+        print(len(data))
+        if(type(data) == bytes):
+            print("RAW" + self.raw)
+            
+            self.raw += data.decode('latin-1')
+        else:
+            print("RAW STRING")
+            self.raw += data.encode()
         return data
 
     def reReadData(self, Hexline):
@@ -158,7 +184,7 @@ class GPSTerminal:
     def readIMEI(self):
         IMEI = self.readData(34)
         self.imei = IMEI
-        self.socket.send(chr(01))
+        self.socket.send(struct.pack('i',1))
 
     def isCorrectConnection(self):
         """
@@ -173,7 +199,9 @@ class GPSTerminal:
         """
         Reply for connected client that data correctly received
         """
-        self.socket.send(struct.pack("!L", self.blockCount))
+        #self.socket.send(bytes(0x01))
+        print("BLOCK COUNT" + str(self.blockCount))
+        self.socket.send(struct.pack("!L", 1))
         self.closeConnection()
 
     def sendFalse(self):
