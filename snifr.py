@@ -2,7 +2,6 @@ import socket
 import threading
 
 from time import gmtime, strftime
-import pickle
 from configparser import RawConfigParser
 from optparse import OptionParser
 
@@ -52,11 +51,6 @@ class ClientThread(threading.Thread):
 def get_config(config_file):
 
     config = RawConfigParser()
-    config.add_section('redis')
-    config.set('redis', 'channel', 'GPSSensorsData')
-    config.set('redis', 'host', 'localhost')
-    config.set('redis', 'port', '6379')
-    config.set('redis', 'db', '0')
 
     config.add_section('server')
     config.set('server', 'port', '9980')
