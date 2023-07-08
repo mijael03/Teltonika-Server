@@ -31,10 +31,15 @@ class ClientThread(threading.Thread):
             terminalClient = GPSTerminal(self.socket)
             self.identifier = terminalClient.getIp()
             terminalClient.startReadData()
+            #terminalClient.sendOKClient()
+
             if terminalClient.isSuccess():
-                self.saveData(terminalClient.getSensorData())
+                #self.saveData(terminalClient.getSensorData())
                 terminalClient.sendOKClient()
                 self.log('Client %s'%terminalClient.getImei())
+            else:
+                terminalClient.sendFalse()
+                pass
             terminalClient.closeConnection()
         else: 
             self.log('Socket is null.')
@@ -68,7 +73,6 @@ if __name__ == "__main__":
 
     print("Gps sensors server. %s" % strftime("%d %b %H:%M:%S", gmtime()))
     print("Config: %s" % options.conf_file)
-    print("Sensor data db: %s:%s/%s" % (config.get('redis', 'host'), config.get('redis', 'port'), config.get('redis', 'channel')))
     print("Server started at port %d" % int(config.get('server', 'port')))
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
