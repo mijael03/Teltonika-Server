@@ -51,18 +51,20 @@ class GPSTerminal:
             print(e)
             self.success = False
     def proceedConnection(self):
-        #if self.isCorrectConnection():
-        self.readIMEI()
-        if self.imei:
-            print("IMEI: ")
-            print(self.imei)
-            print(type(self.imei))
-            print()
-            self.proceedData()
+        if self.isCorrectConnection():
+            self.readIMEI()
+            if self.imei:
+                print("IMEI: ")
+                print(self.imei)
+                print(type(self.imei))
+                print()
+                self.proceedData()
+            else:
+                print("INCORRECT CONNECTION")
+                self.error.append( "Incorrect connection data stream" )
+                self.success = False
         else:
-            print("INCORRECT CONNECTION")
-            self.error.append( "Incorrect connection data stream" )
-            self.success = False
+            print("The size is not correct")
     def proceedConexion(self):
         self.readIMEI()
         while True:
@@ -252,6 +254,7 @@ class GPSTerminal:
             return 0
     def readIMEI(self):
         IMEI = self.readData(34)
+        print(len(IMEI))
         try:
             self.imei = IMEI.decode('utf-8')[2:]
         except Exception as e:
@@ -265,9 +268,12 @@ class GPSTerminal:
         Check data from client terminal for correct first bytes
         """
         hello = self.readData(2)
-        return '(15,)' == str(
+        print("FIRS TWO BYTES")
+        print(hello)
+        firstTwoBytes = str(
             struct.unpack("!H", hello )
         )
+        return '(15,)'  == firstTwoBytes or  '(16,)' == firstTwoBytes
     def sendOKClient(self):
         """
         Reply for connected client that data correctly received
