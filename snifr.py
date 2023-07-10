@@ -14,11 +14,9 @@ class ClientThread(threading.Thread):
         self.config = kwargs['config']
         self.logTime = strftime("%d %b %H:%M:%S", gmtime())
         self.identifier = "None"
-        r_host = self.config.get('redis', 'host')
-        r_port = int(self.config.get('redis', 'port'))
-        r_db = int(self.config.get('redis', 'db'))
+        
         #self.rcli = redis.Redis(host=r_host, port=r_port, db=r_db)
-        self.channel = self.config.get('redis', 'channel')
+        
     
     def log(self, msg):
         print("%s\t%s\t%s"%(self.logTime, self.identifier, msg))

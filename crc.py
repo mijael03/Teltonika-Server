@@ -2,7 +2,10 @@ def crc16(buff, crc =0, poly = 0xa001):
 	l = len(buff)
 	i = 0
 	while i< l:
-		ch = ord(buff[i])
+		if(type(buff[i]) == int):
+			ch = buff[i]
+		else:
+			ch = ord(buff[i])
 		uc = 0
 		while uc < 8:
 			if (crc & 1) ^ (ch & 1):
