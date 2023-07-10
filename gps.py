@@ -56,8 +56,6 @@ class GPSTerminal:
             if self.imei:
                 print("IMEI: ")
                 print(self.imei)
-                print(type(self.imei))
-                print()
                 self.proceedData()
             else:
                 print("INCORRECT CONNECTION")
@@ -76,7 +74,7 @@ class GPSTerminal:
                     self.sendOKClient()
                 except data_exceptions.DataNotReceivedException:
                     print("Los datos no han sido recibidos")
-                    #self.closeConnection()
+                    self.closeConnection()
                     break
             else:
                 print("INCORRECT CONNECTION")
@@ -92,24 +90,24 @@ class GPSTerminal:
         if self.data:
             dataLen = len(self.data)
             if dataLen > 44:
-                Zeros, AVLLength, CodecID, BlockCount, Hexline, BlockCount2, CRC_16 = unpack('4sIBBs*B4s', self.data)
+                Zeros, AVLLength, CodecID, BlockCount, Hexline, BlockCount2, CRC_16 = unpack('4s4sBBs*B4s', self.data)
                 self.blockCountBytes = self.data[9:10]
                 preamble = int.from_bytes(Zeros)
                 if(preamble == 0):
-                    print(type(self.data[9:-4]))
-                    print(self.data[9:-4][:1])
                     self.Hexline = binascii.hexlify(Hexline)
                     crc16Calculated = crc16(self.data[8:-4])
                     crc16value = int.from_bytes(CRC_16)
+                    avlengthValue = int.from_bytes(AVLLength)
+                    print("AVLLENGTH")
+                    print(avlengthValue)
                     if BlockCount == BlockCount2:
                         if crc16Calculated == crc16value:
                             with open("logs.txt", "a") as file_object:
                                 file_object.write(f'HEADER FOR RECORDS RECEIVED in : {self.time}  for imei {self.imei} \n')
-                                file_object.write(f'AVL LENGTH: {AVLLength} \n')
                                 file_object.write(f'CODEC ID : {CodecID} \n')
-                                file_object.write(f'QUantity 1: {BlockCount} \n')
-                                file_object.write(f'QUantity 2: {BlockCount2} \n')
-                                file_object.write(f'CRC-16 : {CRC_16} \n')
+                                file_object.write(f'AVL Length : {avlengthValue} \n')
+                                file_object.write(f'Records Quantity: {BlockCount} \n')
+                                file_object.write(f'CRC-16 : {crc16value} \n')
                             self.blockCount = BlockCount
                             self.AVL = 0 # AVL ? Looks like data reading cursor
                             proceed = 0
@@ -211,7 +209,7 @@ class GPSTerminal:
                 pc += 1
         sensorDataResultSorted = {key:value for key, value in sorted(sensorDataResult.items(), key=lambda item: int(item[0]))}
         print(str(self.imei))
-        return {'imei' : self.imei, 'date': DateS, 'Lon': Lon, 'Lat': Lat, 'Satellites':GpsSat, 'Prio': Prio, 'GPS H': GpsH, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse, 'IO EVENT CODEE': IOEventCode, 'Number of IO': NumOfIO, 'sensorData': sensorDataResultSorted}
+        return {'imei' : self.imei, 'date': DateS, 'Longitud': Lon, 'Latitud': Lat, 'Satellites':GpsSat, 'Prio': Prio, 'GPS Altitude': GpsH, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse, 'IO EVENT CODE': IOEventCode, 'Number of IO': NumOfIO, 'sensorData': sensorDataResultSorted}
         #return {'imei' : self.imei, 'date': DateS, 'Lon': Lon, 'Lat': Lat, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse}
     def readSensorDataBytes(self, count):
         result = {}
@@ -268,8 +266,6 @@ class GPSTerminal:
         Check data from client terminal for correct first bytes
         """
         hello = self.readData(2)
-        print("FIRS TWO BYTES")
-        print(hello)
         firstTwoBytes = str(
             struct.unpack("!H", hello )
         )
@@ -281,7 +277,7 @@ class GPSTerminal:
         #self.socket.send(struct.pack("!L", self.blockCount))
         #self.socket.send(struct.pack("i", self.blockCount))
         self.socket.send(self.blockCount.to_bytes())
-        print("BLOCK COUNT " + str(self.blockCount))
+        print("Response sent, size: " + str(self.blockCount))
         #self.socket.send(struct.pack("!L", 1))
         self.closeConnection()
     def sendFalse(self):
