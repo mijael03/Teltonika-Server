@@ -37,3 +37,6 @@ nosetests.xml
 
 # config
 gps.conf
+
+#logs
+logs.txt
