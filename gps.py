@@ -1,12 +1,18 @@
+from email.utils import format_datetime
 import json
 import struct
 import binascii
 from datetime import datetime
+import time
+import pymongo
+import requests
 from crc import crc16
 import socket
 import data_exceptions
+
 def bin_to_float( binary):
         return struct.unpack('!f',struct.pack('!I', int(binary, 2)))[0]
+
 def unpack(fmt, data):
     try:
         return struct.unpack(fmt, data)
@@ -22,11 +28,12 @@ def unpack(fmt, data):
         print("FMT")
         print(fmt)
         return struct.unpack(fmt, data)
+    
 class GPSTerminal:
     def __init__(self, socket):
         self.socket = socket[0]
         self.ip = socket[1][0]
-        self.socket.settimeout(10)
+        self.socket.settimeout(4)
         self.initVariables()
     def initVariables(self):
         self.imei = "unknown"
@@ -42,6 +49,10 @@ class GPSTerminal:
         self.dataBreak = 0
         # If we have more than 5 try to read, connection not proceeded
         self.possibleBreakCount = 5
+        #setup mongodb configuration
+        self.myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+        self.database = self.myclient['FirstDatabase']
+        self.tracking_collection = self.database["tracking"]
     def startReadData(self):
         try:
             self.proceedConnection()
@@ -49,7 +60,8 @@ class GPSTerminal:
         except socket.timeout as e:
             print("SOCKET TIMEOUT")
             print(e)
-            self.success = False
+            #self.success = False
+            self.closeConnection()
     def proceedConnection(self):
         if self.isCorrectConnection():
             self.readIMEI()
@@ -58,29 +70,34 @@ class GPSTerminal:
                 print(self.imei)
                 self.proceedData()
             else:
+                wrongpacket = int(self.readData(34).decode('utf-8'))
+                print(wrongpacket)
                 print("INCORRECT CONNECTION")
                 self.error.append( "Incorrect connection data stream" )
                 self.success = False
         else:
             print("The size is not correct")
     def proceedConexion(self):
-        self.readIMEI()
+        #self.readIMEI()
         while True:
-            #self.readIMEI()
+            time.sleep(2)
+            self.readIMEI()
             if self.imei:
                 try:
                     self.proceedData()
-                    #time.sleep(2)
                     self.sendOKClient()
+                    time.sleep(3)
                 except data_exceptions.DataNotReceivedException:
                     print("Los datos no han sido recibidos")
-                    self.closeConnection()
+                    #self.closeConnection()
                     break
             else:
                 print("INCORRECT CONNECTION")
                 self.error.append( "Incorrect connection data stream" )
-                self.success = False
-                break
+                #time.sleep(3)
+                self.readIMEI()
+                #self.success = False
+                #break
     def proceedData(self):
         """
         Received and proceed work data of GPS Terminal
@@ -110,7 +127,7 @@ class GPSTerminal:
                                 file_object.write(f'CRC-16 : {crc16value} \n')
                             self.blockCount = BlockCount
                             self.AVL = 0 # AVL ? Looks like data reading cursor
-                            proceed = 0
+                            proceed = 000000000000000
                             AVLBlockPos = 0
                             json_array = []
                             while proceed < BlockCount:
@@ -139,13 +156,33 @@ class GPSTerminal:
                                         proceed -= 1
                                 proceed += 1
                                 AVLBlockPos = self.AVL
-                            json_array_sorted = sorted(json_array, key=lambda d: d['date'])
+                            json_array_sorted = sorted(json_array, key=lambda d: d['sendDate'])
                             with open("logs.txt", "a", encoding='utf-8') as file_object:
                                 # Append 'hello' at the end of file
                                 file_object.write(f'RECORD RECEIVED')
                                 file_object.write("\n")
                                 file_object.write(json.dumps(json_array_sorted,indent=4))
                                 file_object.write("\n")
+                            with open("only_one_logs.txt", "a", encoding='utf-8') as file_object:
+                                # Append 'hello' at the end of file
+                                file_object.write(f'BIGGER RECORD RECEIVED')
+                                file_object.write("\n")
+                                file_object.write(f'TIMESTAMP: {datetime.now()} \n')
+                                onlybigger = json_array_sorted[-2:]
+                                file_object.write(json.dumps(onlybigger,indent=4))
+                                file_object.write("\n")
+                            batterylevel = json_array_sorted[-1]['sensorData']['113']
+
+                            res = {key: json_array_sorted[-1][key] for key in json_array_sorted[-1].keys()
+                                    & {'imei','latitude','longitude','sendDate'}}
+                            res['batteryLevel'] = batterylevel
+                            res['status'] = 0
+                            print(res)
+                            back_server = "https://backguep.guepardoprod.com/infrastructure-ticket/tracker/get_data"
+                            post_response = requests.post(back_server, json=res)
+                            post_response_json = post_response.json()
+                            print(post_response_json)
+                            #self.tracking_collection.insert_many(json_array)
                         else:
                             print("CRC-16 do not match")
                             self.success = False
@@ -158,7 +195,7 @@ class GPSTerminal:
                 print(f'Minimum size for AVL Data Packet is 45, the size of the packet received is {dataLen}')
         else:
             print("ERRROR :(")
-            self.error.append( "No data received" )
+            self.error.append( "No data received")
             self.success = False
             raise data_exceptions.DataNotReceivedException
     def readData(self, length = 1280):
@@ -185,13 +222,14 @@ class GPSTerminal:
         #DateV = b'0x' + self.extract(16)
         DateV = self.extract(16)
         DateS = round(int(DateV, 16) /1000, 0)
+        SendDate = datetime.fromtimestamp(DateS).strftime("%Y/%m/%d %H:%M:%S")
         Prio = self.extract_int(2)
         #GpsLon = self.extract_int(8)
         GpsLon = self.extract_coordinates(8)
         #GpsLat = self.extract_int(8)
         GpsLat = self.extract_coordinates(8)
-        Lon = str(float(GpsLon)/10000000)
-        Lat = str(float(GpsLat)/10000000)
+        Lon = float(GpsLon)/10000000
+        Lat = float(GpsLat)/10000000
         GpsH = self.extract_int(4)
         GpsCourse = self.extract_int(4)
         GpsSat = self.extract_int(2)
@@ -205,11 +243,11 @@ class GPSTerminal:
             data = self.readSensorDataBytes(i)
             for iocode in data.keys():
                 pais_count+=1
-                sensorDataResult[iocode] = data[iocode]
+                sensorDataResult[str(iocode)] = data[iocode]
                 pc += 1
         sensorDataResultSorted = {key:value for key, value in sorted(sensorDataResult.items(), key=lambda item: int(item[0]))}
         print(str(self.imei))
-        return {'imei' : self.imei, 'date': DateS, 'Longitud': Lon, 'Latitud': Lat, 'Satellites':GpsSat, 'Prio': Prio, 'GPS Altitude': GpsH, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse, 'IO EVENT CODE': IOEventCode, 'Number of IO': NumOfIO, 'sensorData': sensorDataResultSorted}
+        return {'imei' : self.imei, 'sendDate': SendDate, 'longitude': Lon, 'latitude': Lat, 'Satellites':GpsSat, 'Prio': Prio, 'GPS Altitude': GpsH, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse, 'IO EVENT CODE': IOEventCode, 'Number of IO': NumOfIO, 'sensorData': sensorDataResultSorted}
         #return {'imei' : self.imei, 'date': DateS, 'Lon': Lon, 'Lat': Lat, 'GpsSpeed': GpsSpeed, 'GpsCourse': GpsCourse}
     def readSensorDataBytes(self, count):
         result = {}
@@ -252,15 +290,19 @@ class GPSTerminal:
             return 0
     def readIMEI(self):
         IMEI = self.readData(34)
-        print(len(IMEI))
         try:
-            self.imei = IMEI.decode('utf-8')[2:]
+            self.imei = int(IMEI.decode('utf-8'))
+            print(self.imei)
         except Exception as e:
             print("EXCEPCION")
             print(e)
             print(IMEI)
-        accept_con_mes = '\x01'
-        self.socket.send(accept_con_mes.encode('utf-8'))
+        if self.imei:
+
+            accept_con_mes = '\x01'
+            self.socket.send(accept_con_mes.encode('utf-8'))
+        else:
+            print("IMEI ERROR")
     def isCorrectConnection(self):
         """
         Check data from client terminal for correct first bytes
@@ -269,6 +311,8 @@ class GPSTerminal:
         firstTwoBytes = str(
             struct.unpack("!H", hello )
         )
+        print("FIRST TWO BYTES")
+        print(firstTwoBytes)
         return '(15,)'  == firstTwoBytes or  '(16,)' == firstTwoBytes
     def sendOKClient(self):
         """
@@ -277,6 +321,7 @@ class GPSTerminal:
         #self.socket.send(struct.pack("!L", self.blockCount))
         #self.socket.send(struct.pack("i", self.blockCount))
         self.socket.send(self.blockCount.to_bytes())
+        
         print("Response sent, size: " + str(self.blockCount))
         #self.socket.send(struct.pack("!L", 1))
         self.closeConnection()

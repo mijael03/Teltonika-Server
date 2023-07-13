@@ -40,3 +40,7 @@ gps.conf
 
 #logs
 logs.txt
+only_one_logs.txt
+
+#VSCode
+.vscode/
