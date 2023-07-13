@@ -33,7 +33,7 @@ class GPSTerminal:
     def __init__(self, socket):
         self.socket = socket[0]
         self.ip = socket[1][0]
-        self.socket.settimeout(4)
+        self.socket.settimeout(5)
         self.initVariables()
     def initVariables(self):
         self.imei = "unknown"
@@ -61,7 +61,7 @@ class GPSTerminal:
             print("SOCKET TIMEOUT")
             print(e)
             #self.success = False
-            self.closeConnection()
+            #self.closeConnection()
     def proceedConnection(self):
         if self.isCorrectConnection():
             self.readIMEI()

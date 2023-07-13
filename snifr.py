@@ -32,7 +32,7 @@ class ClientThread(threading.Thread):
 
             if terminalClient.isSuccess():
                 #self.saveData(terminalClient.getSensorData())
-                terminalClient.sendOKClient()
+                #terminalClient.sendOKClient()
                 self.log('Client %s'%terminalClient.getImei())
                 pass
             else:
