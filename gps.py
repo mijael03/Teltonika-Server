@@ -9,6 +9,7 @@ import requests
 from crc import crc16
 import socket
 import data_exceptions
+import IOElements
 
 def bin_to_float( binary):
         return struct.unpack('!f',struct.pack('!I', int(binary, 2)))[0]
@@ -64,11 +65,13 @@ class GPSTerminal:
             #self.closeConnection()
     def proceedConnection(self):
         if self.isCorrectConnection():
+            time.sleep(2)
             self.readIMEI()
             if self.imei:
                 print("IMEI: ")
                 print(self.imei)
                 self.proceedData()
+                self.sendOKClient()
             else:
                 wrongpacket = int(self.readData(34).decode('utf-8'))
                 print(wrongpacket)
@@ -119,7 +122,7 @@ class GPSTerminal:
                     print(avlengthValue)
                     if BlockCount == BlockCount2:
                         if crc16Calculated == crc16value:
-                            with open("logs.txt", "a") as file_object:
+                            with open("logs/logs.txt", "a") as file_object:
                                 file_object.write(f'HEADER FOR RECORDS RECEIVED in : {self.time}  for imei {self.imei} \n')
                                 file_object.write(f'CODEC ID : {CodecID} \n')
                                 file_object.write(f'AVL Length : {avlengthValue} \n')
@@ -157,31 +160,50 @@ class GPSTerminal:
                                 proceed += 1
                                 AVLBlockPos = self.AVL
                             json_array_sorted = sorted(json_array, key=lambda d: d['sendDate'])
-                            with open("logs.txt", "a", encoding='utf-8') as file_object:
-                                # Append 'hello' at the end of file
+                            with open("logs/logs.txt", "a", encoding='utf-8') as file_object:
                                 file_object.write(f'RECORD RECEIVED')
                                 file_object.write("\n")
                                 file_object.write(json.dumps(json_array_sorted,indent=4))
                                 file_object.write("\n")
-                            with open("only_one_logs.txt", "a", encoding='utf-8') as file_object:
-                                # Append 'hello' at the end of file
+                            with open("logs/only_one_logs.txt", "a", encoding='utf-8') as file_object:
                                 file_object.write(f'BIGGER RECORD RECEIVED')
                                 file_object.write("\n")
                                 file_object.write(f'TIMESTAMP: {datetime.now()} \n')
                                 onlybigger = json_array_sorted[-2:]
                                 file_object.write(json.dumps(onlybigger,indent=4))
                                 file_object.write("\n")
-                            batterylevel = json_array_sorted[-1]['sensorData']['113']
-
-                            res = {key: json_array_sorted[-1][key] for key in json_array_sorted[-1].keys()
-                                    & {'imei','latitude','longitude','sendDate'}}
-                            res['batteryLevel'] = batterylevel
-                            res['status'] = 0
-                            print(res)
-                            back_server = "https://backguep.guepardoprod.com/infrastructure-ticket/tracker/get_data"
-                            post_response = requests.post(back_server, json=res)
-                            post_response_json = post_response.json()
-                            print(post_response_json)
+                            with open("logs/accuracy_logs.txt", "a", encoding='utf-8') as file_object:
+                                file_object.write(f'RECORD RECEIVED')
+                                file_object.write("\n")
+                                file_object.write(f'TIMESTAMP: {datetime.now()} \n')
+                                unique_elements = []
+                                seen_locations = set()
+                                for element in reversed(json_array_sorted):
+                                    location = (element['latitude'], element['longitude'])
+                                    if location not in seen_locations:
+                                        seen_locations.add(location)
+                                        unique_elements.insert(0, element)
+                                for packet in unique_elements:
+                                    file_object.write(f'{packet["sendDate"]} - {packet["latitude"]}, {packet["longitude"]} - Satellites: {packet["Satellites"]} - HDOP: {packet["sensorData"][str(IOElements.HDOP)]} - PDOP: {packet["sensorData"][str(IOElements.PDOP)]}')
+                                    file_object.write("\n")
+                            
+                            if json_array_sorted[-1]['Satellites'] > 3 & json_array_sorted[-1]['sensorData'][str(IOElements.HDOP)] < 20 & json_array_sorted[-1]['sensorData'][str(IOElements.PDOP)] < 20:
+                            #To do: 
+                                res = {key: json_array_sorted[-1][key] for key in json_array_sorted[-1].keys()
+                                        & {'imei','latitude','longitude','sendDate'}}
+                                batterylevel = json_array_sorted[-1]['sensorData'][str(IOElements.BATTERY_LEVEL)]
+                                res['batteryLevel'] = batterylevel
+                                res['speed'] = json_array_sorted[-1]['sensorData'][str(IOElements.SPEED)]
+                                res['status'] = 0
+                                print(res)
+                                back_server = "https://backguep.guepardoprod.com/infrastructure-ticket/tracker/get_data"
+                                post_response = requests.post(back_server, json=res)
+                                post_response_json = post_response.json()
+                                print(post_response_json)
+                            else:
+                                print("Record don't send")
+                                with open("logs/only_one_logs.txt", "a", encoding='utf-8') as file_object:
+                                    file_object.write("The record was not sent \n")
                             #self.tracking_collection.insert_many(json_array)
                         else:
                             print("CRC-16 do not match")
@@ -219,14 +241,11 @@ class GPSTerminal:
         Proceed block data from received data
         """
         print("INICIO BLOCK DATA")
-        #DateV = b'0x' + self.extract(16)
         DateV = self.extract(16)
         DateS = round(int(DateV, 16) /1000, 0)
         SendDate = datetime.fromtimestamp(DateS).strftime("%Y/%m/%d %H:%M:%S")
         Prio = self.extract_int(2)
-        #GpsLon = self.extract_int(8)
         GpsLon = self.extract_coordinates(8)
-        #GpsLat = self.extract_int(8)
         GpsLat = self.extract_coordinates(8)
         Lon = float(GpsLon)/10000000
         Lat = float(GpsLat)/10000000

@@ -39,8 +39,10 @@ nosetests.xml
 gps.conf
 
 #logs
+logs/
 logs.txt
 only_one_logs.txt
+accuracy_logs.txt
 
 #VSCode
 .vscode/
